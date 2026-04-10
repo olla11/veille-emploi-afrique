@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VeilleEmploi Afrique — 10/04/2026</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #F8F7F2; color: #2C2C2A; line-height: 1.6; }
+  a { color: inherit; text-decoration: none; }
+  .site-header { background: #fff; border-bottom: 1px solid #E0DED8; padding: 1rem 2rem; position: sticky; top:0; z-index:100; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+  .logo { font-size: 1.4rem; font-weight: 600; color: #0F6E56; }
+  .logo span { color: #2C2C2A; }
+  .update-badge { font-size: 0.78rem; background: #EAF3DE; color: #3B6D11; padding: 4px 12px; border-radius: 20px; }
+  .hero { background: linear-gradient(135deg, #0F6E56 0%, #1D9E75 100%); color: white; padding: 2.5rem 2rem 2rem; }
+  .hero h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.5rem; }
+  .hero p { opacity: 0.9; font-size: 1rem; max-width: 600px; }
+  .stats { display: flex; gap: 1rem; margin-top: 1.5rem; flex-wrap: wrap; }
+  .stat { background: rgba(255,255,255,0.15); border-radius: 10px; padding: 0.75rem 1.25rem; min-width: 120px; }
+  .stat-n { font-size: 1.8rem; font-weight: 700; }
+  .stat-l { font-size: 0.8rem; opacity: 0.85; }
+  .summary-box { background: #fff; margin: 1.5rem 2rem; padding: 1.25rem 1.5rem; border-radius: 12px; border-left: 4px solid #1D9E75; font-size: 0.95rem; color: #3B3A35; line-height: 1.7; }
+  .summary-box strong { color: #0F6E56; }
+  .main { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem 3rem; }
+  .sector-section { margin: 2rem 0; }
+  .sector-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; }
+  .sector-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .sector-name { font-size: 1rem; font-weight: 600; color: #2C2C2A; }
+  .sector-count { font-size: 0.8rem; background: #F1EFE8; color: #5F5E5A; padding: 2px 8px; border-radius: 10px; }
+  .offers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .offer-card { background: #fff; border: 1px solid #E0DED8; border-radius: 12px; padding: 1rem 1.25rem; transition: border-color 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; justify-content: space-between; }
+  .offer-card:hover { border-color: #1D9E75; box-shadow: 0 2px 12px rgba(29,158,117,0.1); }
+  .offer-card.is-new { border-left: 3px solid #1D9E75; }
+  .offer-title { font-size: 0.95rem; font-weight: 600; color: #1a1a18; margin-bottom: 4px; }
+  .offer-org { font-size: 0.85rem; color: #5F5E5A; margin-bottom: 6px; }
+  .offer-resume { font-size: 0.82rem; color: #555; margin-bottom: 8px; font-style: italic; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tag { font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; }
+  .tag-pays { background: #E6F1FB; color: #185FA5; }
+  .tag-type { background: #FAEEDA; color: #854F0B; }
+  .tag-new { background: #EAF3DE; color: #3B6D11; font-weight: 600; }
+  .offer-footer { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 10px; border-top: 1px solid #F1EFE8; flex-wrap: wrap; gap: 6px; }
+  .offer-source { font-size: 0.72rem; color: #aaa; }
+  .btn-voir { display: inline-block; font-size: 0.82rem; font-weight: 600; color: #0F6E56; background: #E1F5EE; padding: 5px 14px; border-radius: 6px; border: 1px solid #1D9E75; transition: background 0.2s; }
+  .btn-voir:hover { background: #1D9E75; color: white; }
+  .btn-voir-off { font-size: 0.78rem; color: #ccc; font-style: italic; }
+  .footer { text-align: center; padding: 2rem; font-size: 0.8rem; color: #888; border-top: 1px solid #E0DED8; background: #fff; margin-top: 2rem; }
+  @media (max-width: 600px) {
+    .hero h1 { font-size: 1.3rem; }
+    .summary-box { margin: 1rem; }
+    .offers-grid { grid-template-columns: 1fr; }
+    .site-header { padding: 0.75rem 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="logo">Veille<span>Emploi</span></div>
+  <div class="update-badge">Mis à jour le 10 April 2026 à 21:46</div>
+</header>
+
+<div class="hero">
+  <h1>Appels à recrutement — Afrique francophone</h1>
+  <p>Bénin, Togo, Sénégal, Côte d'Ivoire et plus — offres classées par secteur d'activité</p>
+  <div class="stats">
+    <div class="stat"><div class="stat-n">6</div><div class="stat-l">Offres du jour</div></div>
+    <div class="stat"><div class="stat-n">6</div><div class="stat-l">Nouvelles offres</div></div>
+    <div class="stat"><div class="stat-n">6</div><div class="stat-l">Secteurs actifs</div></div>
+    <div class="stat"><div class="stat-n">3</div><div class="stat-l">Pays couverts</div></div>
+  </div>
+</div>
+
+<div class="summary-box">
+  <strong>Résumé du 10/04/2026 :</strong> Bulletin test du 10/04/2026 — 6 offres simulées dans 6 secteurs. Les offres proviennent de cDiscussion.com, ReliefWeb et UNDP Jobs.
+</div>
+
+<main class="main">
+
+  <section class="sector-section">
+    <div class="sector-header">
+      <div class="sector-dot" style="background:#1D9E75"></div>
+      <div class="sector-name">Agriculture & Agri-business</div>
+      <div class="sector-count">1 offre(s)</div>
+    </div>
+    <div class="offers-grid">
+      <div class="offer-card is-new">
+        <div>
+          <div class="offer-title">Coordinateur de projets agricoles</div>
+          <div class="offer-org">FAO Bénin</div>
+          <div class="offer-resume">Coordinateur de projets agricoles</div>
+          <div class="tags">
+            <span class="tag tag-pays">Bénin</span>
+            <span class="tag tag-type">CDI</span>
+            <span class="tag tag-new">Nouveau</span>
+          </div>
+        </div>
+        <div class="offer-footer">
+          <div class="offer-source">Source : cDiscussion.com</div>
+          <a href="https://www.cdiscussion.com/offre-d-emploi/?details-job=1137292" target="_blank" rel="noopener" class="btn-voir">Voir l'offre complète →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sector-section">
+    <div class="sector-header">
+      <div class="sector-dot" style="background:#D85A30"></div>
+      <div class="sector-name">Santé & Nutrition</div>
+      <div class="sector-count">1 offre(s)</div>
+    </div>
+    <div class="offers-grid">
+      <div class="offer-card is-new">
+        <div>
+          <div class="offer-title">Consultant en chaîne de valeur riz</div>
+          <div class="offer-org">GESCOD Togo</div>
+          <div class="offer-resume">Consultant en chaîne de valeur riz</div>
+          <div class="tags">
+            <span class="tag tag-pays">Togo</span>
+            <span class="tag tag-type">CDD</span>
+            <span class="tag tag-new">Nouveau</span>
+          </div>
+        </div>
+        <div class="offer-footer">
+          <div class="offer-source">Source : ReliefWeb</div>
+          <a href="https://reliefweb.int/job/1234567" target="_blank" rel="noopener" class="btn-voir">Voir l'offre complète →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sector-section">
+    <div class="sector-header">
+      <div class="sector-dot" style="background:#378ADD"></div>
+      <div class="sector-name">ONG & Développement</div>
+      <div class="sector-count">1 offre(s)</div>
+    </div>
+    <div class="offers-grid">
+      <div class="offer-card is-new">
+        <div>
+          <div class="offer-title">Responsable suivi-évaluation</div>
+          <div class="offer-org">Save the Children</div>
+          <div class="offer-resume">Responsable suivi-évaluation</div>
+          <div class="tags">
+            <span class="tag tag-pays">Bénin</span>
+            <span class="tag tag-type">Consultance</span>
+            <span class="tag tag-new">Nouveau</span>
+          </div>
+        </div>
+        <div class="offer-footer">
+          <div class="offer-source">Source : ReliefWeb</div>
+          <a href="https://reliefweb.int/job/1234568" target="_blank" rel="noopener" class="btn-voir">Voir l'offre complète →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sector-section">
+    <div class="sector-header">
+      <div class="sector-dot" style="background:#EF9F27"></div>
+      <div class="sector-name">Finance & Microfinance</div>
+      <div class="sector-count">1 offre(s)</div>
+    </div>
+    <div class="offers-grid">
+      <div class="offer-card is-new">
+        <div>
+          <div class="offer-title">Chargé de programme microfinance</div>
+          <div class="offer-org">UNCDF</div>
+          <div class="offer-resume">Chargé de programme microfinance</div>
+          <div class="tags">
+            <span class="tag tag-pays">Sénégal</span>
+            <span class="tag tag-type">CDI</span>
+            <span class="tag tag-new">Nouveau</span>
+          </div>
+        </div>
+        <div class="offer-footer">
+          <div class="offer-source">Source : UNDP Jobs</div>
+          <a href="https://jobs.undp.org/cj_view_job.cfm?cur_job_id=123" target="_blank" rel="noopener" class="btn-voir">Voir l'offre complète →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sector-section">
+    <div class="sector-header">
+      <div class="sector-dot" style="background:#7F77DD"></div>
+      <div class="sector-name">Education & Formation</div>
+      <div class="sector-count">1 offre(s)</div>
+    </div>
+    <div class="offers-grid">
+      <div class="offer-card is-new">
+        <div>
+          <div class="offer-title">Avis de recrutement d'un expert en audit interne</div>
+          <div class="offer-org">AGENCE BENINOISE DE PROTECTION CIVILE</div>
+          <div class="offer-resume">Avis de recrutement d'un expert en audit interne</div>
+          <div class="tags">
+            <span class="tag tag-pays">Bénin</span>
+            <span class="tag tag-type">CDD</span>
+            <span class="tag tag-new">Nouveau</span>
+          </div>
+        </div>
+        <div class="offer-footer">
+          <div class="offer-source">Source : cDiscussion.com</div>
+          <a href="https://www.cdiscussion.com/offre-d-emploi/?details-job=1137294" target="_blank" rel="noopener" class="btn-voir">Voir l'offre complète →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sector-section">
+    <div class="sector-header">
+      <div class="sector-dot" style="background:#888780"></div>
+      <div class="sector-name">Infrastructure & BTP</div>
+      <div class="sector-count">1 offre(s)</div>
+    </div>
+    <div class="offers-grid">
+      <div class="offer-card is-new">
+        <div>
+          <div class="offer-title">Renforcement des équipes ADER</div>
+          <div class="offer-org">Agence de Développement de l'Élevage des Ruminants</div>
+          <div class="offer-resume">Renforcement des équipes ADER</div>
+          <div class="tags">
+            <span class="tag tag-pays">Bénin</span>
+            <span class="tag tag-type">Consultance</span>
+            <span class="tag tag-new">Nouveau</span>
+          </div>
+        </div>
+        <div class="offer-footer">
+          <div class="offer-source">Source : cDiscussion.com</div>
+          <a href="https://www.cdiscussion.com/offre-d-emploi/?details-job=1137292" target="_blank" rel="noopener" class="btn-voir">Voir l'offre complète →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  VeilleEmploi Afrique — Mise à jour automatique quotidienne — 10 April 2026 à 21:46<br>
+  Sources : cDiscussion.com · ReliefWeb · UNDP Jobs | Propulsé par Claude (Anthropic)
+</footer>
+
+</body>
+</html>
