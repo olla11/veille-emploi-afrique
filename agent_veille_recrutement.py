@@ -168,18 +168,13 @@ def scrape_reliefweb() -> list[dict]:
 
     # IDs pays ReliefWeb : Bénin=20, Togo=226, Sénégal=188,
     # Côte d'Ivoire=48, Burkina Faso=33, Niger=154, Mali=130
-    url = "https://api.reliefweb.int/v1/jobs"
+    url = "https://api.reliefweb.int/v1/reports"
     params = {
-        "appname":   "veille-emploi-afrique",
-        "limit":     50,
-        "sort[]":    "date:desc",
-        "filter[operator]": "AND",
-        "filter[conditions][0][field]":    "country.id",
-        "filter[conditions][0][value][]":  [20, 226, 188, 48, 33, 154, 130],
-        "filter[conditions][0][operator]": "OR",
-        "fields[include][]": ["title", "body", "source", "country", "date", "url", "type"],
+        "appname": "veille-emploi-afrique",
+        "limit": 50,
+        "sort[]": "date:desc",
+        "fields[include][]": ["title", "body", "source", "country", "date", "url"],
     }
-
     try:
         resp = requests.get(url, params=params, headers=HEADERS, timeout=20)
         resp.raise_for_status()
