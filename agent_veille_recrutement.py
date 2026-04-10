@@ -158,30 +158,38 @@ log = logging.getLogger("veille")
 # ──────────────────────────────────────────────
 
 def parse_generic_job_list(html: str, source: dict) -> list[dict]:
-    """Parser générique : cherche les balises <li>, <article>, .job-item, etc."""
     soup = BeautifulSoup(html, "html.parser")
     offers = []
-    # Sélecteurs courants pour les listes d'offres
+    base_url = source["url"] if isinstance(source["url"], str) else source["url"][0]
+    domain = "/".join(base_url.split("/")[:3])  # ex: https://reliefweb.int
+
     candidates = soup.select(
         "article.job, li.job, div.job-item, div.offer, "
         ".job-listing, .vacancies-item, .post-item"
     )
     if not candidates:
-        # Fallback : titres h2/h3 avec lien
         candidates = soup.select("h2 a, h3 a")
 
     for el in candidates[:30]:
         title = el.get_text(" ", strip=True)[:200]
-        link  = el.get("href", "") or (el.find("a") or {}).get("href", "")
+        # Cherche le lien dans l'élément ou ses enfants
+        link_el = el if el.name == "a" else el.find("a")
+        link = ""
+        if link_el:
+            href = link_el.get("href", "")
+            if href.startswith("http"):
+                link = href
+            elif href.startswith("/"):
+                link = domain + href
         if not title or len(title) < 8:
             continue
         offers.append({
-            "titre":       title,
-            "org":         source["label"],
-            "pays":        source["pays"],
-            "url":         link,
-            "source":      source["label"],
-            "raw_text":    title,
+            "titre":    title,
+            "org":      source["label"],
+            "pays":     source["pays"],
+            "url":      link,
+            "source":   source["label"],
+            "raw_text": title,
         })
     return offers
 
@@ -451,6 +459,10 @@ def generate_html_site(offers: list[dict], new_ids: set, summary: str) -> str:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VeilleEmploi Afrique — {date.today().strftime('%d/%m/%Y')}</title>
+  .offer-footer {{ display: flex; align-items: center; justify-content: space-between; margin-top: 10px; flex-wrap: wrap; gap: 6px; }}
+  .btn-voir {{ display: inline-block; font-size: 0.82rem; font-weight: 600; color: #0F6E56; background: #E1F5EE; padding: 5px 12px; border-radius: 6px; border: 1px solid #1D9E75; transition: background 0.2s; }}
+  .btn-voir:hover {{ background: #1D9E75; color: white; }}
+  .btn-voir-off {{ font-size: 0.78rem; color: #aaa; font-style: italic; }}
 <style>
   *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: 'Segoe UI', system-ui, sans-serif; background: #F8F7F2; color: #2C2C2A; line-height: 1.6; }}
@@ -535,11 +547,10 @@ def generate_html_site(offers: list[dict], new_ids: set, summary: str) -> str:
         for o in sector_offers:
             is_new = "is-new" if o["id"] in new_ids else ""
             new_tag = '<span class="tag tag-new">Nouveau</span>' if o["id"] in new_ids else ""
-            url = o.get("url","") or "#"
+            url = o.get("url","") or ""
+            btn_source = f'<a href="{url}" target="_blank" rel="noopener" class="btn-voir">Voir l\'offre complète →</a>' if url and url != "#" else '<span class="btn-voir-off">Lien non disponible</span>'
             html += f"""      <div class="offer-card {is_new}">
-        <a href="{url}" target="_blank" rel="noopener">
-          <div class="offer-title">{o['titre'][:100]}</div>
-        </a>
+        <div class="offer-title">{o['titre'][:100]}</div>
         <div class="offer-org">{o.get('org','')}</div>
         <div class="offer-resume">{o.get('resume','')}</div>
         <div class="tags">
@@ -547,7 +558,10 @@ def generate_html_site(offers: list[dict], new_ids: set, summary: str) -> str:
           <span class="tag tag-type">{o.get('type_contrat','')}</span>
           {new_tag}
         </div>
-        <div class="offer-source">Source : {o.get('source','')}</div>
+        <div class="offer-footer">
+          <div class="offer-source">Source : {o.get('source','')}</div>
+          {btn_source}
+        </div>
       </div>
 """
         html += "    </div>\n  </section>\n"
