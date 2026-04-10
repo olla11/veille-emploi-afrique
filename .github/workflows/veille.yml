@@ -18,7 +18,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Lancer l'agent
-        run: python agent_veille_recrutement.py --once
+        run: python agent_veille_recrutement.py --test
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
