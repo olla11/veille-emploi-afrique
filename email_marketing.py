@@ -676,11 +676,7 @@ def send_daily_email(excel_path: Path, word_path: Path, offers: list[dict]):
 
     resend.api_key = os.environ.get("RESEND_API_KEY", "")
 
-    DESTINATAIRES = [
-        "olla.admi@gmail.com",
-        "adriendogo@gmail.com",
-        "prudencedogo@gmail.com",
-    ]
+    DESTINATAIRES = ["olla.admi@gmail.com"]
 
     today     = date.today().strftime("%d/%m/%Y")
     nb_offres = len(offers)
