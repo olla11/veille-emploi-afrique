@@ -669,55 +669,41 @@ Réponds UNIQUEMENT avec le JSON valide.
 # ──────────────────────────────────────────────
 # ENVOI EMAIL
 # ──────────────────────────────────────────────
-
 def send_daily_email(excel_path: Path, word_path: Path, offers: list[dict]):
-    """Envoie l'email quotidien avec les deux pièces jointes."""
+    """Envoie l'email quotidien via Resend."""
+    import base64
+    import resend
 
-    GMAIL_USER     = "olla.admi@gmail.com"
-    GMAIL_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD","")
-    DESTINATAIRES  = [
+    resend.api_key = os.environ.get("RESEND_API_KEY", "")
+
+    DESTINATAIRES = [
         "olla.admi@gmail.com",
         "adriendogo@gmail.com",
         "prudencedogo@gmail.com",
     ]
 
-    today = date.today().strftime("%d/%m/%Y")
+    today     = date.today().strftime("%d/%m/%Y")
     nb_offres = len(offers)
-    secteurs  = list(set(o.get("secteur","") for o in offers))[:4]
+    secteurs  = list(set(o.get("secteur", "") for o in offers))[:4]
 
-    # Corps de l'email
     corps_html = f"""
 <html><body style="font-family: Arial, sans-serif; color: #2C2C2A; max-width: 600px; margin: 0 auto;">
-
 <div style="background: #0F6E56; padding: 24px; border-radius: 8px 8px 0 0; text-align: center;">
   <h1 style="color: white; margin: 0; font-size: 22px;">ABED ACADEMY</h1>
   <p style="color: #E1F5EE; margin: 4px 0 0; font-size: 14px;">Bulletin Marketing Quotidien — {today}</p>
 </div>
-
 <div style="background: #fff; padding: 24px; border: 1px solid #E0DED8;">
-
   <p>Bonjour à toute l'équipe,</p>
-
-  <p>Voici le bulletin marketing ABED Academy du <strong>{today}</strong>. 
-  L'agent a analysé <strong>{nb_offres} offres d'emploi</strong> en Afrique francophone 
-  dans les secteurs : <strong>{", ".join(secteurs)}</strong>.</p>
-
+  <p>Voici le bulletin marketing ABED Academy du <strong>{today}</strong>.
+  L'agent a analysé <strong>{nb_offres} offres</strong> dans les secteurs :
+  <strong>{", ".join(secteurs)}</strong>.</p>
   <h3 style="color: #0F6E56;">📎 Fichiers joints</h3>
-
   <div style="background: #E1F5EE; padding: 12px 16px; border-radius: 6px; margin-bottom: 12px;">
-    <strong>📊 Fichier Excel</strong> — Top 10 offres du jour<br>
-    <span style="font-size: 13px; color: #5F5E5A;">
-      Détails des postes, compétences requises, formation ABED recommandée et liens pour postuler.
-    </span>
+    <strong>📊 Excel</strong> — Top 10 offres + formation ABED recommandée
   </div>
-
   <div style="background: #FAEEDA; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px;">
-    <strong>📝 Fichier Word</strong> — Contenu marketing prêt à publier<br>
-    <span style="font-size: 13px; color: #5F5E5A;">
-      5 posts LinkedIn + 2 scripts TikTok basés sur les offres du jour.
-    </span>
+    <strong>📝 Word</strong> — 5 posts LinkedIn + 2 scripts TikTok
   </div>
-
   <h3 style="color: #0F6E56;">🎯 Top 5 offres du jour</h3>
   <table style="width:100%; border-collapse: collapse; font-size: 13px;">
     <tr style="background: #0F6E56; color: white;">
@@ -725,75 +711,53 @@ def send_daily_email(excel_path: Path, word_path: Path, offers: list[dict]):
       <th style="padding: 8px; text-align: left;">Organisation</th>
       <th style="padding: 8px; text-align: left;">Formation ABED</th>
     </tr>
-"""
-
-    for i, o in enumerate(offers[:5]):
-        bg = "#F8F7F2" if i % 2 == 0 else "#FFFFFF"
-        corps_html += f"""
-    <tr style="background: {bg};">
-      <td style="padding: 8px; border-bottom: 1px solid #E0DED8;"><strong>{o.get('titre','')[:60]}</strong></td>
-      <td style="padding: 8px; border-bottom: 1px solid #E0DED8; color: #5F5E5A;">{o.get('org','')[:40]}</td>
-      <td style="padding: 8px; border-bottom: 1px solid #E0DED8; color: #0F6E56; font-size: 12px;">{o.get('_formation_matchee',{}).get('nom','')[:40]}</td>
-    </tr>"""
-
-    corps_html += f"""
+    {"".join(f'<tr style="background:{"#F8F7F2" if i%2==0 else "#fff"};"><td style="padding:8px;border-bottom:1px solid #E0DED8;"><strong>{o.get("titre","")[:55]}</strong></td><td style="padding:8px;border-bottom:1px solid #E0DED8;color:#5F5E5A;">{o.get("org","")[:35]}</td><td style="padding:8px;border-bottom:1px solid #E0DED8;color:#0F6E56;font-size:12px;">{o.get("_formation_matchee",{}).get("nom","")[:35]}</td></tr>' for i,o in enumerate(offers[:5]))}
   </table>
-
-  <div style="margin-top: 24px; padding: 16px; background: #E1F5EE; border-radius: 6px; text-align: center;">
-    <p style="margin: 0; font-size: 13px; color: #0F6E56;">
-      <strong>Plateforme ABED Academy</strong> | 
-      <a href="https://academy.abedong.org" style="color: #0F6E56;">academy.abedong.org</a>
-    </p>
+  <div style="margin-top:24px;padding:16px;background:#E1F5EE;border-radius:6px;text-align:center;">
+    <a href="https://academy.abedong.org" style="color:#0F6E56;font-weight:600;">academy.abedong.org</a>
   </div>
-
 </div>
-
-<div style="background: #F8F7F2; padding: 12px; text-align: center; border-radius: 0 0 8px 8px; font-size: 11px; color: #888;">
-  Email généré automatiquement par l'agent de veille ABED Academy — {datetime.now().strftime('%d/%m/%Y à %H:%M')}
+<div style="background:#F8F7F2;padding:12px;text-align:center;font-size:11px;color:#888;">
+  Généré automatiquement — {datetime.now().strftime('%d/%m/%Y à %H:%M')}
 </div>
-
 </body></html>
 """
 
-    # Construction du message
-    msg = MIMEMultipart("mixed")
-    msg["From"]    = GMAIL_USER
-    msg["To"]      = ", ".join(DESTINATAIRES)
-    msg["Subject"] = f"[ABED Academy] Bulletin Marketing du {today} — {nb_offres} offres analysées"
+    # Pièces jointes
+    attachments = []
+    for path, filename, ctype in [
+        (excel_path,
+         f"ABED_Top10_{date.today().isoformat()}.xlsx",
+         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        (word_path,
+         f"ABED_Marketing_{date.today().isoformat()}.docx",
+         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ]:
+        if path.exists():
+            with open(path, "rb") as f:
+                content = base64.b64encode(f.read()).decode()
+            attachments.append({
+                "filename": filename,
+                "content":  content,
+                "type":     ctype,
+            })
 
-    msg.attach(MIMEText(corps_html, "html", "utf-8"))
+    params = {
+        "from":        "ABED Academy <onboarding@resend.dev>",
+        "to":          DESTINATAIRES,
+        "subject":     f"[ABED Academy] Bulletin Marketing {today} — {nb_offres} offres",
+        "html":        corps_html,
+        "attachments": attachments,
+    }
 
-    # Pièce jointe Excel
-    if excel_path.exists():
-        with open(excel_path, "rb") as f:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header("Content-Disposition",
-                            f'attachment; filename="ABED_Academy_Top10_Offres_{date.today().isoformat()}.xlsx"')
-            msg.attach(part)
-
-    # Pièce jointe Word
-    if word_path.exists():
-        with open(word_path, "rb") as f:
-            part2 = MIMEBase("application", "octet-stream")
-            part2.set_payload(f.read())
-            encoders.encode_base64(part2)
-            part2.add_header("Content-Disposition",
-                             f'attachment; filename="ABED_Academy_Contenu_Marketing_{date.today().isoformat()}.docx"')
-            msg.attach(part2)
-
-    # Envoi
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(GMAIL_USER, GMAIL_PASSWORD)
-            server.sendmail(GMAIL_USER, DESTINATAIRES, msg.as_string())
-        log.info(f"Email envoyé à : {', '.join(DESTINATAIRES)}")
+        response = resend.Emails.send(params)
+        log.info(f"Email envoyé via Resend — id: {response['id']}")
     except Exception as e:
-        log.error(f"Erreur envoi email: {e}")
+        log.error(f"Erreur Resend: {e}")
         raise
 
-
+    
 # ──────────────────────────────────────────────
 # FONCTION PRINCIPALE
 # ──────────────────────────────────────────────
