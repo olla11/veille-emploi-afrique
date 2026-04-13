@@ -743,7 +743,7 @@ def send_daily_email(excel_path: Path, word_path: Path, offers: list[dict]):
             })
 
     params = {
-        "from":        "ABED Academy <onboarding@resend.dev>",
+        "from": "ABED Academy <noreply@abedong.org>",
         "to":          DESTINATAIRES,
         "subject":     f"[ABED Academy] Bulletin Marketing {today} — {nb_offres} offres",
         "html":        corps_html,
