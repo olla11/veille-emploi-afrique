@@ -1,23 +1,20 @@
 """
-AGENT DE VEILLE RECRUTEMENT - BÉNIN & AFRIQUE FRANCOPHONE
-==========================================================
-Version complète avec :
-  - Scraping cDiscussion.com + ReliefWeb API + UNDP
-  - Classification IA des offres par secteur
-  - Génération du site web quotidien
-  - Email marketing quotidien à 7h (Excel + Word + LinkedIn + TikTok)
-
-INSTALLATION:
-    pip install requests beautifulsoup4 anthropic schedule python-dotenv openpyxl python-docx
-
-CONFIGURATION (.env) :
-    ANTHROPIC_API_KEY=sk-ant-...
-    GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
-
-LANCEMENT:
-    python agent_veille_recrutement.py --once     # une seule exécution complète
-    python agent_veille_recrutement.py --test     # mode test (données mock)
-    python agent_veille_recrutement.py            # boucle auto (site 6h, email 7h)
+AGENT DE VEILLE RECRUTEMENT - BÉNIN & AFRIQUE FRANCOPHONE v4
+=============================================================
+Sources :
+  - cDiscussion.com
+  - emploibenin.com
+  - emploibenin.net
+  - novojob.com (Bénin)
+  - bjemploi.com
+  - jobbenin.com
+  - concours.sn
+  - Senjob.com
+  - AfricaWork
+  - Jobart Talent
+  - ReliefWeb API
+  - UNjobs
+  - UNDP Jobs
 """
 
 import os
@@ -36,10 +33,6 @@ import schedule
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# ──────────────────────────────────────────────
-# CONFIGURATION
-# ──────────────────────────────────────────────
 
 OUTPUT_DIR  = Path("./site")
 DATA_DIR    = Path("./data")
@@ -80,10 +73,6 @@ SECTEUR_COLORS = {
     "Autre":                       "#5F5E5A",
 }
 
-# ──────────────────────────────────────────────
-# LOGGING
-# ──────────────────────────────────────────────
-
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -97,7 +86,39 @@ log = logging.getLogger("veille")
 
 
 # ──────────────────────────────────────────────
-# SCRAPING
+# HELPER GÉNÉRIQUE
+# ──────────────────────────────────────────────
+
+def generic_scrape(url, source_name, pays, selectors, base_url=""):
+    """Scraper générique réutilisable pour tous les sites."""
+    offers = []
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=20)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for sel in selectors:
+            items = soup.select(sel)
+            if items:
+                for item in items[:30]:
+                    titre_el = item.select_one("h2 a, h3 a, h4 a, a.title, .title a, a") or item
+                    titre = titre_el.get_text(strip=True)[:200]
+                    lien  = titre_el.get("href","") if titre_el.name == "a" else (item.select_one("a") or {}).get("href","")
+                    if lien and not lien.startswith("http") and base_url:
+                        lien = base_url + lien
+                    org_el = item.select_one(".company, .employer, .org, .entreprise, .recruteur")
+                    org = org_el.get_text(strip=True)[:100] if org_el else "Non précisé"
+                    if titre and len(titre) > 5:
+                        offers.append({"titre":titre,"org":org,"pays":pays,
+                                       "url":lien or "","source":source_name,
+                                       "raw_text":f"{titre} {org}"})
+                break
+    except Exception as e:
+        log.warning(f"  {source_name}: {e}")
+    return offers
+
+
+# ──────────────────────────────────────────────
+# SOURCES
 # ──────────────────────────────────────────────
 
 def scrape_cdiscussion() -> list[dict]:
@@ -114,15 +135,12 @@ def scrape_cdiscussion() -> list[dict]:
                 lien = base + lien
             parent = h5.find_parent()
             for _ in range(5):
-                if parent is None:
-                    break
-                text = parent.get_text(" ", strip=True)
-                if any(x in text for x in ["Bénin","Togo","Cotonou"]):
-                    break
+                if parent is None: break
+                if any(x in parent.get_text() for x in ["Bénin","Togo","Cotonou"]): break
                 parent = parent.find_parent()
             context = parent.get_text(" ", strip=True) if parent else ""
             lines = [l.strip() for l in context.split("\n") if l.strip()]
-            org = next((l for l in lines if l and l != titre and len(l)>3 and "Voir l'offre" not in l), "")
+            org  = next((l for l in lines if l and l != titre and len(l)>3 and "Voir l'offre" not in l), "")
             pays = "Togo" if "Togo" in context else "Bénin"
             if titre and len(titre) > 5:
                 offers.append({"titre":titre,"org":org or "Non précisé","pays":pays,
@@ -133,25 +151,280 @@ def scrape_cdiscussion() -> list[dict]:
     return offers
 
 
-def scrape_reliefweb() -> list[dict]:
+def scrape_emploibenin_com() -> list[dict]:
+    """emploibenin.com — principal site d'emploi béninois."""
     offers = []
     try:
-        url = "https://api.reliefweb.int/v1/jobs"
-        params = {
-            "appname": "veille-emploi-afrique",
-            "limit": 50,
-            "sort[]": "date:desc",
-            "fields[include][]": ["title","body","source","country","date","url"],
-        }
-        resp = requests.get(url, params=params, headers=HEADERS, timeout=20)
+        resp = requests.get("https://www.emploibenin.com/recherche-jobs-benin",
+                            headers=HEADERS, timeout=20)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        # Cherche les blocs d'offres
+        for item in soup.select(".job, .offer, .annonce, article, .item-job")[:30]:
+            titre_el = item.select_one("h2, h3, h4, .title, a")
+            if not titre_el: continue
+            titre = titre_el.get_text(strip=True)[:200]
+            lien_el = item.select_one("a")
+            lien = lien_el.get("href","") if lien_el else ""
+            if lien and not lien.startswith("http"):
+                lien = "https://www.emploibenin.com" + lien
+            org_el = item.select_one(".company, .employer, .recruteur, .org")
+            org = org_el.get_text(strip=True) if org_el else "Non précisé"
+            if titre and len(titre) > 8:
+                offers.append({"titre":titre,"org":org,"pays":"Bénin",
+                               "url":lien,"source":"EmploiBenin.com",
+                               "raw_text":f"{titre} {org}"})
+        # Fallback : cherche les liens contenant des mots-clés emploi
+        if not offers:
+            for a in soup.select("a[href*='emploi'], a[href*='job'], a[href*='recrutement']")[:30]:
+                titre = a.get_text(strip=True)[:200]
+                lien  = a.get("href","")
+                if not lien.startswith("http"):
+                    lien = "https://www.emploibenin.com" + lien
+                if titre and len(titre) > 8:
+                    offers.append({"titre":titre,"org":"Non précisé","pays":"Bénin",
+                                   "url":lien,"source":"EmploiBenin.com","raw_text":titre})
+        log.info(f"  EmploiBenin.com: {len(offers)} offres")
+    except Exception as e:
+        log.warning(f"  EmploiBenin.com: {e}")
+    return offers
+
+
+def scrape_emploibenin_net() -> list[dict]:
+    """emploibenin.net — offres et concours Bénin."""
+    offers = []
+    try:
+        resp = requests.get("https://emploibenin.net/", headers=HEADERS, timeout=20)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for item in soup.select("article, .post, .entry, .job, li.item")[:30]:
+            titre_el = item.select_one("h2 a, h3 a, h4 a, .title a, a")
+            if not titre_el: continue
+            titre = titre_el.get_text(strip=True)[:200]
+            lien  = titre_el.get("href","")
+            if not lien.startswith("http"):
+                lien = "https://emploibenin.net" + lien
+            if titre and len(titre) > 8:
+                offers.append({"titre":titre,"org":"Non précisé","pays":"Bénin",
+                               "url":lien,"source":"EmploiBenin.net","raw_text":titre})
+        log.info(f"  EmploiBenin.net: {len(offers)} offres")
+    except Exception as e:
+        log.warning(f"  EmploiBenin.net: {e}")
+    return offers
+
+
+def scrape_novojob() -> list[dict]:
+    """novojob.com — offres Bénin et Côte d'Ivoire."""
+    offers = []
+    for url, pays in [
+        ("https://www.novojob.com/benin/", "Bénin"),
+        ("https://www.novojob.com/cote-d-ivoire/", "Côte d'Ivoire"),
+    ]:
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for item in soup.select(".job-item, .offer, article, .listing-item, li")[:20]:
+                titre_el = item.select_one("h2 a, h3 a, a.title, .title, a")
+                if not titre_el: continue
+                titre = titre_el.get_text(strip=True)[:200]
+                lien  = titre_el.get("href","") if titre_el.name == "a" else (item.select_one("a") or {}).get("href","")
+                if lien and not lien.startswith("http"):
+                    lien = "https://www.novojob.com" + lien
+                org_el = item.select_one(".company, .employer")
+                org = org_el.get_text(strip=True) if org_el else "Non précisé"
+                if titre and len(titre) > 8:
+                    offers.append({"titre":titre,"org":org,"pays":pays,
+                                   "url":lien,"source":"Novojob.com","raw_text":f"{titre} {org}"})
+            time.sleep(1)
+        except Exception as e:
+            log.warning(f"  Novojob {pays}: {e}")
+    log.info(f"  Novojob.com: {len(offers)} offres")
+    return offers
+
+
+def scrape_bjemploi() -> list[dict]:
+    """bjemploi.com — site béninois depuis 2008."""
+    offers = []
+    try:
+        resp = requests.get("https://www.bjemploi.com/", headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for item in soup.select("article, .annonce, .job, .post, li.item")[:25]:
+            titre_el = item.select_one("h2 a, h3 a, a.title, a")
+            if not titre_el: continue
+            titre = titre_el.get_text(strip=True)[:200]
+            lien  = titre_el.get("href","")
+            if lien and not lien.startswith("http"):
+                lien = "https://www.bjemploi.com" + lien
+            if titre and len(titre) > 8:
+                offers.append({"titre":titre,"org":"Non précisé","pays":"Bénin",
+                               "url":lien,"source":"BJEmploi.com","raw_text":titre})
+        log.info(f"  BJEmploi.com: {len(offers)} offres")
+    except Exception as e:
+        log.warning(f"  BJEmploi: {e}")
+    return offers
+
+
+def scrape_jobbenin() -> list[dict]:
+    """jobbenin.com — nouveau site béninois."""
+    offers = []
+    try:
+        resp = requests.get("https://jobbenin.com/", headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for item in soup.select(".job, .offer, article, .card, .listing")[:25]:
+            titre_el = item.select_one("h2, h3, h4, .title, a")
+            if not titre_el: continue
+            titre = titre_el.get_text(strip=True)[:200]
+            lien_el = item.select_one("a")
+            lien = lien_el.get("href","") if lien_el else ""
+            if lien and not lien.startswith("http"):
+                lien = "https://jobbenin.com" + lien
+            org_el = item.select_one(".company, .employer, .org")
+            org = org_el.get_text(strip=True) if org_el else "Non précisé"
+            if titre and len(titre) > 8:
+                offers.append({"titre":titre,"org":org,"pays":"Bénin",
+                               "url":lien,"source":"JobBenin.com","raw_text":f"{titre} {org}"})
+        log.info(f"  JobBenin.com: {len(offers)} offres")
+    except Exception as e:
+        log.warning(f"  JobBenin: {e}")
+    return offers
+
+
+def scrape_concours_sn() -> list[dict]:
+    """concours.sn — concours, bourses et emplois Sénégal/Afrique."""
+    offers = []
+    try:
+        resp = requests.get("https://www.concours.sn/offres-emploi/",
+                            headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for item in soup.select("article, .post, .job, li.item")[:25]:
+            titre_el = item.select_one("h2 a, h3 a, h4 a, a.title, a")
+            if not titre_el: continue
+            titre = titre_el.get_text(strip=True)[:200]
+            lien  = titre_el.get("href","")
+            if lien and not lien.startswith("http"):
+                lien = "https://www.concours.sn" + lien
+            if titre and len(titre) > 8:
+                offers.append({"titre":titre,"org":"Non précisé","pays":"Sénégal",
+                               "url":lien,"source":"Concours.sn","raw_text":titre})
+        log.info(f"  Concours.sn: {len(offers)} offres")
+    except Exception as e:
+        log.warning(f"  Concours.sn: {e}")
+    return offers
+
+
+def scrape_senjob() -> list[dict]:
+    """Senjob.com — Afrique de l'Ouest francophone."""
+    offers = []
+    try:
+        resp = requests.get("https://senjob.com/offres-d-emploi.php",
+                            headers=HEADERS, timeout=20)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for item in soup.select(".job-listing, .offre, article, .job_listing, li")[:25]:
+            titre_el = item.select_one("h2, h3, .job-title, a")
+            if not titre_el: continue
+            titre = titre_el.get_text(strip=True)[:200]
+            lien_el = item.select_one("a")
+            lien = lien_el.get("href","") if lien_el else ""
+            if lien and not lien.startswith("http"):
+                lien = "https://senjob.com" + lien
+            org_el = item.select_one(".company, .org, .entreprise")
+            org = org_el.get_text(strip=True) if org_el else "Non précisé"
+            pays_el = item.select_one(".location, .pays")
+            pays = pays_el.get_text(strip=True) if pays_el else "Sénégal"
+            if titre and len(titre) > 5:
+                offers.append({"titre":titre,"org":org,"pays":pays,
+                                "url":lien,"source":"Senjob.com","raw_text":f"{titre} {org}"})
+        log.info(f"  Senjob.com: {len(offers)} offres")
+    except Exception as e:
+        log.warning(f"  Senjob: {e}")
+    return offers
+
+
+def scrape_africawork() -> list[dict]:
+    """AfricaWork — pan-africain francophone."""
+    offers = []
+    pages = [
+        ("https://www.africawork.com/offres-emploi-benin", "Bénin"),
+        ("https://www.africawork.com/offres-emploi-togo", "Togo"),
+        ("https://www.africawork.com/offres-emploi-senegal", "Sénégal"),
+        ("https://www.africawork.com/offres-emploi-cote-ivoire", "Côte d'Ivoire"),
+        ("https://www.africawork.com/offres-emploi-burkina-faso", "Burkina Faso"),
+    ]
+    for url, pays in pages:
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for item in soup.select(".job-item, .offer-item, article.job, .job_listing")[:15]:
+                titre_el = item.select_one("h2, h3, .title, a")
+                if not titre_el: continue
+                titre = titre_el.get_text(strip=True)[:200]
+                lien_el = item.select_one("a")
+                lien = lien_el.get("href","") if lien_el else ""
+                if lien and not lien.startswith("http"):
+                    lien = "https://www.africawork.com" + lien
+                org_el = item.select_one(".company, .employer")
+                org = org_el.get_text(strip=True) if org_el else "Non précisé"
+                if titre and len(titre) > 5:
+                    offers.append({"titre":titre,"org":org,"pays":pays,
+                                   "url":lien,"source":"AfricaWork","raw_text":f"{titre} {org}"})
+            time.sleep(1)
+        except Exception as e:
+            log.warning(f"  AfricaWork {pays}: {e}")
+    log.info(f"  AfricaWork: {len(offers)} offres")
+    return offers
+
+
+def scrape_jobartalent() -> list[dict]:
+    """Jobart Talent — multi-pays africains."""
+    offers = []
+    try:
+        resp = requests.get("https://www.jobartalent.com/offres-emploi",
+                            headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for item in soup.select(".job-item, .offer, article, .listing")[:25]:
+            titre_el = item.select_one("h2, h3, .title, a")
+            if not titre_el: continue
+            titre = titre_el.get_text(strip=True)[:200]
+            lien_el = item.select_one("a")
+            lien = lien_el.get("href","") if lien_el else ""
+            if lien and not lien.startswith("http"):
+                lien = "https://www.jobartalent.com" + lien
+            org_el  = item.select_one(".company, .org")
+            org     = org_el.get_text(strip=True) if org_el else "Non précisé"
+            pays_el = item.select_one(".location, .country")
+            pays    = pays_el.get_text(strip=True) if pays_el else "Afrique"
+            if titre and len(titre) > 5:
+                offers.append({"titre":titre,"org":org,"pays":pays,
+                               "url":lien,"source":"Jobart Talent","raw_text":f"{titre} {org}"})
+        log.info(f"  Jobart Talent: {len(offers)} offres")
+    except Exception as e:
+        log.warning(f"  Jobart Talent: {e}")
+    return offers
+
+
+def scrape_reliefweb() -> list[dict]:
+    """ReliefWeb API — offres humanitaires/ONG."""
+    offers = []
+    try:
+        resp = requests.get(
+            "https://api.reliefweb.int/v1/jobs",
+            params={"appname":"veille-emploi-afrique","limit":50,"sort[]":"date:desc",
+                    "fields[include][]":["title","body","source","country","date","url"]},
+            headers=HEADERS, timeout=20
+        )
         resp.raise_for_status()
         items = resp.json().get("data",[])
         log.info(f"  ReliefWeb API: {len(items)} offres")
         for item in items:
             f = item.get("fields",{})
             titre = f.get("title","")
-            if not titre:
-                continue
+            if not titre: continue
             sources   = f.get("source",[{}])
             org       = sources[0].get("name","Non précisé") if sources else "Non précisé"
             pays_list = f.get("country",[{}])
@@ -164,16 +437,45 @@ def scrape_reliefweb() -> list[dict]:
     return offers
 
 
+def scrape_unjobs() -> list[dict]:
+    """UNjobs.org — postes Nations Unies."""
+    offers = []
+    for url, pays in [
+        ("https://unjobs.org/duty_stations/benin", "Bénin"),
+        ("https://unjobs.org/duty_stations/togo", "Togo"),
+        ("https://unjobs.org/duty_stations/senegal", "Sénégal"),
+    ]:
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for item in soup.select(".job, .vacancy, li, .job-listing")[:15]:
+                titre_el = item.select_one("a, h3, h2")
+                if not titre_el: continue
+                titre = titre_el.get_text(strip=True)[:200]
+                lien  = titre_el.get("href","")
+                if lien and not lien.startswith("http"):
+                    lien = "https://unjobs.org" + lien
+                if titre and len(titre) > 5:
+                    offers.append({"titre":titre,"org":"Nations Unies","pays":pays,
+                                   "url":lien,"source":"UNjobs","raw_text":titre})
+            time.sleep(1)
+        except Exception as e:
+            log.warning(f"  UNjobs {pays}: {e}")
+    log.info(f"  UNjobs: {len(offers)} offres")
+    return offers
+
+
 def scrape_undp() -> list[dict]:
+    """UNDP Jobs — postes PNUD."""
     offers = []
     try:
-        resp = requests.get("https://jobs.undp.org/cj_view_jobs.cfm", headers=HEADERS, timeout=15)
+        resp = requests.get("https://jobs.undp.org/cj_view_jobs.cfm",
+                            headers=HEADERS, timeout=15)
         soup = BeautifulSoup(resp.text, "html.parser")
-        for row in soup.select("table tr")[1:30]:
+        for row in soup.select("table tr")[1:25]:
             cells = row.find_all("td")
-            if len(cells) < 2:
-                continue
-            titre   = cells[0].get_text(strip=True)
+            if len(cells) < 2: continue
+            titre   = cells[0].get_text(strip=True)[:200]
             lien_el = cells[0].find("a")
             lien    = "https://jobs.undp.org" + lien_el["href"] if lien_el else ""
             pays    = cells[-1].get_text(strip=True) if cells else "Afrique"
@@ -187,18 +489,46 @@ def scrape_undp() -> list[dict]:
 
 
 def scrape_all() -> list[dict]:
+    """Lance toutes les sources."""
     log.info("=== Début de la collecte ===")
     all_offers = []
-    log.info("Scraping : cDiscussion.com")
-    all_offers.extend(scrape_cdiscussion())
-    time.sleep(2)
-    log.info("Scraping : ReliefWeb API")
-    all_offers.extend(scrape_reliefweb())
-    time.sleep(1)
-    log.info("Scraping : UNDP Jobs")
-    all_offers.extend(scrape_undp())
-    log.info(f"Total brut : {len(all_offers)} offres collectées")
-    return all_offers
+
+    sources = [
+        ("cDiscussion.com",    scrape_cdiscussion),
+        ("EmploiBenin.com",    scrape_emploibenin_com),
+        ("EmploiBenin.net",    scrape_emploibenin_net),
+        ("Novojob.com",        scrape_novojob),
+        ("BJEmploi.com",       scrape_bjemploi),
+        ("JobBenin.com",       scrape_jobbenin),
+        ("Concours.sn",        scrape_concours_sn),
+        ("Senjob.com",         scrape_senjob),
+        ("AfricaWork",         scrape_africawork),
+        ("Jobart Talent",      scrape_jobartalent),
+        ("ReliefWeb API",      scrape_reliefweb),
+        ("UNjobs",             scrape_unjobs),
+        ("UNDP Jobs",          scrape_undp),
+    ]
+
+    for nom, fn in sources:
+        log.info(f"Scraping : {nom}")
+        try:
+            results = fn()
+            all_offers.extend(results)
+        except Exception as e:
+            log.warning(f"  {nom} échoué: {e}")
+        time.sleep(2)
+
+    # Déduplique par titre similaire
+    seen_titres = set()
+    unique = []
+    for o in all_offers:
+        key = o["titre"][:50].lower().strip()
+        if key not in seen_titres:
+            seen_titres.add(key)
+            unique.append(o)
+
+    log.info(f"Total brut : {len(all_offers)} offres → {len(unique)} après déduplication titres")
+    return unique
 
 
 # ──────────────────────────────────────────────
@@ -206,10 +536,10 @@ def scrape_all() -> list[dict]:
 # ──────────────────────────────────────────────
 
 def classify_and_enrich_with_claude(offers: list[dict]) -> list[dict]:
-    if not offers:
-        return []
-    client    = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY",""))
-    enriched  = []
+    if not offers: return []
+    client   = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY",""))
+    enriched = []
+
     for i in range(0, len(offers), 20):
         batch = offers[i:i+20]
         items_json = json.dumps([
@@ -218,13 +548,14 @@ def classify_and_enrich_with_claude(offers: list[dict]) -> list[dict]:
         ], ensure_ascii=False)
         prompt = f"""Classe ces offres d'emploi Afrique francophone.
 {items_json}
-Pour chaque offre retourne JSON :
-- id, secteur (parmi {json.dumps(SECTEURS)}), type_contrat (CDI/CDD/Consultance/Stage/Inconnu),
-  pays_detecte, resume (max 15 mots), pertinence_score (1-5)
+Pour chaque offre JSON :
+- id, secteur (parmi {json.dumps(SECTEURS)}),
+  type_contrat (CDI/CDD/Consultance/Stage/Inconnu),
+  pays_detecte, resume (max 15 mots fr), pertinence_score (1-5)
 Réponds UNIQUEMENT tableau JSON valide."""
         try:
             resp = client.messages.create(
-                model="claude-sonnet-4-20250514", max_tokens=2000,
+                model="claude-sonnet-4-5", max_tokens=2000,
                 messages=[{"role":"user","content":prompt}]
             )
             raw = resp.content[0].text.strip()
@@ -235,25 +566,30 @@ Réponds UNIQUEMENT tableau JSON valide."""
                 idx = item.get("id",0)
                 if idx < len(batch):
                     o = dict(batch[idx])
-                    o["secteur"]          = item.get("secteur","Autre")
-                    o["type_contrat"]     = item.get("type_contrat","Inconnu")
-                    o["pays"]             = item.get("pays_detecte", o.get("pays",""))
-                    o["resume"]           = item.get("resume","")
-                    o["pertinence_score"] = item.get("pertinence_score",3)
-                    o["id"]               = hashlib.md5((o["titre"]+o.get("org","")).encode()).hexdigest()[:8]
-                    o["date_collecte"]    = date.today().isoformat()
+                    o.update({
+                        "secteur":          item.get("secteur","Autre"),
+                        "type_contrat":     item.get("type_contrat","Inconnu"),
+                        "pays":             item.get("pays_detecte", o.get("pays","")),
+                        "resume":           item.get("resume",""),
+                        "pertinence_score": item.get("pertinence_score",3),
+                        "id":               hashlib.md5((o["titre"]+o.get("org","")).encode()).hexdigest()[:8],
+                        "date_collecte":    date.today().isoformat(),
+                    })
                     enriched.append(o)
-            log.info(f"  Batch {i//20+1} classifié")
+            log.info(f"  Batch {i//20+1} classifié ({len(batch)} offres)")
             time.sleep(0.5)
         except Exception as e:
-            log.error(f"Erreur Claude: {e}")
+            log.error(f"Erreur Claude batch {i//20+1}: {e}")
             for o in batch:
-                o.update({"secteur":"Autre","type_contrat":"Inconnu","resume":o["titre"][:80],
+                o.update({"secteur":"Autre","type_contrat":"Inconnu",
+                           "resume":o["titre"][:80],
                            "id":hashlib.md5(o["titre"].encode()).hexdigest()[:8],
-                           "date_collecte":date.today().isoformat()})
+                           "date_collecte":date.today().isoformat(),
+                           "pertinence_score":2})
                 enriched.append(o)
+
     enriched = [o for o in enriched if o.get("pertinence_score",0) >= 2]
-    log.info(f"Après filtre : {len(enriched)} offres retenues")
+    log.info(f"Après filtre qualité : {len(enriched)} offres retenues")
     return enriched
 
 
@@ -284,15 +620,15 @@ def generate_daily_summary(offers):
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY",""))
     by_sector = {}
     for o in offers:
-        by_sector.setdefault(o.get("secteur","Autre"), []).append(o)
+        by_sector.setdefault(o.get("secteur","Autre"),[]).append(o)
     sector_summary = {s:[o["titre"] for o in lst[:5]] for s,lst in by_sector.items()}
     try:
         resp = client.messages.create(
-            model="claude-sonnet-4-20250514", max_tokens=400,
+            model="claude-sonnet-4-5", max_tokens=400,
             messages=[{"role":"user","content":
-                f"Résumé éditorial en 3-5 phrases pour bulletin veille emploi Afrique francophone. "
-                f"Offres du jour : {json.dumps(sector_summary,ensure_ascii=False)}. "
-                f"Cite secteurs actifs, organisations, tendance. Réponse en français uniquement."}]
+                f"Résumé éditorial 3-5 phrases bulletin veille emploi Afrique francophone. "
+                f"Offres: {json.dumps(sector_summary,ensure_ascii=False)}. "
+                f"Cite secteurs actifs, organisations, tendance. Français uniquement."}]
         )
         return resp.content[0].text.strip()
     except Exception as e:
@@ -301,14 +637,15 @@ def generate_daily_summary(offers):
 
 
 # ──────────────────────────────────────────────
-# GÉNÉRATION DU SITE HTML
+# GÉNÉRATION HTML
 # ──────────────────────────────────────────────
 
 def generate_html_site(offers, new_ids, summary):
     by_sector = {}
     for o in offers:
         by_sector.setdefault(o.get("secteur","Autre"),[]).append(o)
-    today_str = datetime.now().strftime("%d %B %Y à %H:%M")
+    today_str  = datetime.now().strftime("%d %B %Y à %H:%M")
+    nb_sources = len(set(o.get("source","") for o in offers))
 
     html = f"""<!DOCTYPE html>
 <html lang="fr">
@@ -321,21 +658,19 @@ def generate_html_site(offers, new_ids, summary):
   body{{font-family:'Segoe UI',system-ui,sans-serif;background:#F8F7F2;color:#2C2C2A;line-height:1.6}}
   a{{color:inherit;text-decoration:none}}
   .site-header{{background:#fff;border-bottom:1px solid #E0DED8;padding:1rem 2rem;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}}
-  .logo{{font-size:1.4rem;font-weight:600;color:#0F6E56}}
-  .logo span{{color:#2C2C2A}}
+  .logo{{font-size:1.4rem;font-weight:600;color:#0F6E56}}.logo span{{color:#2C2C2A}}
   .update-badge{{font-size:.78rem;background:#EAF3DE;color:#3B6D11;padding:4px 12px;border-radius:20px}}
   .hero{{background:linear-gradient(135deg,#0F6E56 0%,#1D9E75 100%);color:white;padding:2.5rem 2rem 2rem}}
   .hero h1{{font-size:1.8rem;font-weight:700;margin-bottom:.5rem}}
   .hero p{{opacity:.9;font-size:1rem;max-width:600px}}
   .stats{{display:flex;gap:1rem;margin-top:1.5rem;flex-wrap:wrap}}
-  .stat{{background:rgba(255,255,255,.15);border-radius:10px;padding:.75rem 1.25rem;min-width:120px}}
-  .stat-n{{font-size:1.8rem;font-weight:700}}
-  .stat-l{{font-size:.8rem;opacity:.85}}
+  .stat{{background:rgba(255,255,255,.15);border-radius:10px;padding:.75rem 1.25rem;min-width:110px}}
+  .stat-n{{font-size:1.8rem;font-weight:700}}.stat-l{{font-size:.8rem;opacity:.85}}
   .abed-banner{{background:#fff;margin:1.5rem 2rem;padding:1rem 1.5rem;border-radius:12px;border:1px solid #1D9E75;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}}
   .abed-banner p{{font-size:.9rem;color:#0F6E56;font-weight:500}}
   .abed-btn{{background:#0F6E56;color:white;padding:8px 20px;border-radius:6px;font-size:.85rem;font-weight:600}}
   .abed-btn:hover{{background:#1D9E75}}
-  .summary-box{{background:#fff;margin:0 2rem 1.5rem;padding:1.25rem 1.5rem;border-radius:12px;border-left:4px solid #1D9E75;font-size:.95rem;color:#3B3A35;line-height:1.7}}
+  .summary-box{{background:#fff;margin:0 2rem 1.5rem;padding:1.25rem 1.5rem;border-radius:12px;border-left:4px solid #1D9E75;font-size:.95rem;line-height:1.7}}
   .summary-box strong{{color:#0F6E56}}
   .main{{max-width:1100px;margin:0 auto;padding:0 1.5rem 3rem}}
   .sector-section{{margin:2rem 0}}
@@ -375,27 +710,24 @@ def generate_html_site(offers, new_ids, summary):
   <div class="logo">Veille<span>Emploi</span></div>
   <div class="update-badge">Mis à jour le {today_str}</div>
 </header>
-
 <div class="hero">
   <h1>Appels à recrutement — Afrique francophone</h1>
   <p>Bénin, Togo, Sénégal, Côte d'Ivoire et plus — offres classées par secteur</p>
   <div class="stats">
     <div class="stat"><div class="stat-n">{len(offers)}</div><div class="stat-l">Offres du jour</div></div>
-    <div class="stat"><div class="stat-n">{len(new_ids)}</div><div class="stat-l">Nouvelles offres</div></div>
-    <div class="stat"><div class="stat-n">{len(by_sector)}</div><div class="stat-l">Secteurs actifs</div></div>
-    <div class="stat"><div class="stat-n">{len(set(o.get('pays','') for o in offers))}</div><div class="stat-l">Pays couverts</div></div>
+    <div class="stat"><div class="stat-n">{len(new_ids)}</div><div class="stat-l">Nouvelles</div></div>
+    <div class="stat"><div class="stat-n">{len(by_sector)}</div><div class="stat-l">Secteurs</div></div>
+    <div class="stat"><div class="stat-n">{len(set(o.get('pays','') for o in offers))}</div><div class="stat-l">Pays</div></div>
+    <div class="stat"><div class="stat-n">{nb_sources}</div><div class="stat-l">Sources</div></div>
   </div>
 </div>
-
 <div class="abed-banner">
   <p>🎓 Prépare-toi aux postes du marché avec <strong>ABED Academy</strong> — Formations professionnelles au Bénin</p>
   <a href="https://academy.abedong.org" target="_blank" rel="noopener" class="abed-btn">Découvrir les formations →</a>
 </div>
-
 <div class="summary-box">
   <strong>Résumé du {date.today().strftime('%d/%m/%Y')} :</strong> {summary}
 </div>
-
 <main class="main">
 """
 
@@ -435,11 +767,12 @@ def generate_html_site(offers, new_ids, summary):
 """
         html += "    </div>\n  </section>\n"
 
+    sources_list = " · ".join(sorted(set(o.get("source","") for o in offers)))
     html += f"""
 </main>
 <footer class="footer">
-  VeilleEmploi Afrique — Mise à jour automatique quotidienne — {today_str}<br>
-  Sources : cDiscussion.com · ReliefWeb · UNDP Jobs | Propulsé par Claude (Anthropic)<br>
+  VeilleEmploi Afrique — Mise à jour automatique (lundi–jeudi) — {today_str}<br>
+  Sources : {sources_list}<br>
   Une initiative <a href="https://academy.abedong.org" target="_blank">ABED Academy</a>
 </footer>
 </body></html>
@@ -454,24 +787,24 @@ def generate_html_site(offers, new_ids, summary):
 MOCK_OFFERS = [
     {"titre":"Coordinateur de projets agricoles","org":"FAO Bénin","pays":"Bénin",
      "url":"https://www.cdiscussion.com/offre-d-emploi/?details-job=1137292","source":"cDiscussion.com","raw_text":"Coordinateur projets agricoles FAO"},
-    {"titre":"Consultant en chaîne de valeur riz","org":"GESCOD Togo","pays":"Togo",
-     "url":"https://reliefweb.int/job/1234567","source":"ReliefWeb","raw_text":"Consultant chaîne valeur riz"},
-    {"titre":"Responsable suivi-évaluation MEAL","org":"Save the Children","pays":"Bénin",
-     "url":"https://reliefweb.int/job/1234568","source":"ReliefWeb","raw_text":"Responsable suivi évaluation MEAL ONG"},
-    {"titre":"Chargé de programme microfinance","org":"UNCDF","pays":"Sénégal",
-     "url":"https://jobs.undp.org/cj_view_job.cfm?cur_job_id=123","source":"UNDP Jobs","raw_text":"Chargé programme microfinance finance"},
-    {"titre":"Expert en audit interne","org":"AGENCE BENINOISE DE PROTECTION CIVILE","pays":"Bénin",
-     "url":"https://www.cdiscussion.com/offre-d-emploi/?details-job=1137294","source":"cDiscussion.com","raw_text":"Expert audit interne finance"},
-    {"titre":"Nutritionniste communautaire","org":"Helen Keller International","pays":"Niger",
-     "url":"https://reliefweb.int/job/1234569","source":"ReliefWeb","raw_text":"Nutritionniste communautaire santé nutrition"},
-    {"titre":"Formateur entrepreneuriat agricole","org":"ABED ONG","pays":"Bénin",
-     "url":"https://www.cdiscussion.com/offre-d-emploi/?details-job=1137295","source":"cDiscussion.com","raw_text":"Formateur entrepreneuriat agricole jeunes"},
-    {"titre":"Analyste financier","org":"COMUBA","pays":"Bénin",
-     "url":"https://www.cdiscussion.com/offre-d-emploi/?details-job=1137296","source":"cDiscussion.com","raw_text":"Analyste financier comptabilité microfinance"},
-    {"titre":"Agent de vulgarisation agricole","org":"Ministère Agriculture Bénin","pays":"Bénin",
-     "url":"https://www.cdiscussion.com/offre-d-emploi/?details-job=1137297","source":"cDiscussion.com","raw_text":"Agent vulgarisation conseil agricole terrain"},
-    {"titre":"Chargé de communication digitale","org":"ONG Plan International","pays":"Togo",
-     "url":"https://reliefweb.int/job/1234570","source":"ReliefWeb","raw_text":"Communication digitale réseaux sociaux ONG"},
+    {"titre":"Assistant en suivi-évaluation MEAL","org":"Save the Children","pays":"Bénin",
+     "url":"https://reliefweb.int/job/1234568","source":"ReliefWeb","raw_text":"Assistant suivi évaluation MEAL ONG indicateurs"},
+    {"titre":"Comptable de projet ONG","org":"UNCDF","pays":"Sénégal",
+     "url":"https://jobs.undp.org","source":"UNDP Jobs","raw_text":"Comptable projet finance budget bailleurs fonds ONG"},
+    {"titre":"Animateur en nutrition communautaire","org":"Helen Keller International","pays":"Niger",
+     "url":"https://reliefweb.int/job/1234569","source":"ReliefWeb","raw_text":"Animateur nutrition communautaire santé ANJE"},
+    {"titre":"Conseiller junior en éducation financière","org":"CLCAM Bénin","pays":"Bénin",
+     "url":"https://www.cdiscussion.com/offre-d-emploi/?details-job=1137296","source":"cDiscussion.com","raw_text":"Conseiller education financière microfinance épargne"},
+    {"titre":"Agent de vulgarisation agricole","org":"Ministère Agriculture","pays":"Bénin",
+     "url":"https://www.emploibenin.com/job/123","source":"EmploiBenin.com","raw_text":"Agent vulgarisation conseil agricole terrain producteurs"},
+    {"titre":"Conseiller technique transformation agroalimentaire","org":"GIZ Togo","pays":"Togo",
+     "url":"https://reliefweb.int/job/1234570","source":"ReliefWeb","raw_text":"Conseiller technique transformation agroalimentaire qualité"},
+    {"titre":"Assistant administratif et financier","org":"ONG Plan International","pays":"Togo",
+     "url":"https://senjob.com/job/12345","source":"Senjob.com","raw_text":"Assistant administratif financier gestion ONG"},
+    {"titre":"Chargé de programme développement rural","org":"SNV Bénin","pays":"Bénin",
+     "url":"https://www.novojob.com/benin/job/456","source":"Novojob.com","raw_text":"Chargé programme développement rural agriculture"},
+    {"titre":"Conseil agricole en agroécologie","org":"SNV Bénin","pays":"Bénin",
+     "url":"https://africawork.com/job/12345","source":"AfricaWork","raw_text":"Conseil agricole agroécologie pratiques durables producteurs"},
 ]
 
 
@@ -480,10 +813,8 @@ MOCK_OFFERS = [
 # ──────────────────────────────────────────────
 
 def run_pipeline(test_mode: bool = False):
-    """Pipeline complet : collecte → classifie → site web → email marketing."""
     log.info(f"╔══ DÉBUT PIPELINE — {datetime.now().strftime('%Y-%m-%d %H:%M')} ══╗")
 
-    # 1. Collecte
     if test_mode:
         log.info("Mode TEST : données mock")
         raw_offers = MOCK_OFFERS
@@ -494,11 +825,10 @@ def run_pipeline(test_mode: bool = False):
         log.warning("Aucune offre collectée.")
         return
 
-    # 2. Classification IA
     if test_mode:
-        offers = []
         secteurs_test = ["Agriculture & Agri-business","ONG & Développement",
                          "Finance & Microfinance","Santé & Nutrition","Education & Formation"]
+        offers = []
         for i, o in enumerate(raw_offers):
             offers.append({**o,
                 "secteur":          secteurs_test[i % len(secteurs_test)],
@@ -511,29 +841,28 @@ def run_pipeline(test_mode: bool = False):
     else:
         offers = classify_and_enrich_with_claude(raw_offers)
 
-    # 3. Déduplication
     history_file = DATA_DIR / "history.json"
     offers, new_offers = deduplicate(offers, history_file)
     new_ids = {o["id"] for o in new_offers}
 
-    # 4. Sauvegarde JSON
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     (DATA_DIR / f"offers_{date.today().isoformat()}.json").write_text(
-        json.dumps(offers, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(offers,ensure_ascii=False,indent=2), encoding="utf-8"
     )
 
-    # 5. Résumé + site web
     if test_mode:
-        summary = f"Bulletin test du {date.today().strftime('%d/%m/%Y')} — {len(offers)} offres simulées. Sources : cDiscussion.com, ReliefWeb, UNDP Jobs."
+        nb_src = len(set(o.get('source','') for o in offers))
+        summary = f"Bulletin test du {date.today().strftime('%d/%m/%Y')} — {len(offers)} offres simulées depuis {nb_src} sources."
     else:
         summary = generate_daily_summary(offers)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    html = generate_html_site(offers, new_ids, summary)
-    (OUTPUT_DIR / "index.html").write_text(html, encoding="utf-8")
-    log.info(f"Site généré : {OUTPUT_DIR / 'index.html'}")
+    (OUTPUT_DIR / "index.html").write_text(
+        generate_html_site(offers, new_ids, summary), encoding="utf-8"
+    )
+    nb_src = len(set(o.get('source','') for o in offers))
+    log.info(f"Site généré : {len(offers)} offres, {nb_src} sources actives")
 
-    # 6. Pipeline marketing ABED Academy (email)
     try:
         from email_marketing import run_marketing_pipeline
         run_marketing_pipeline(offers, EXPORT_DIR)
@@ -544,10 +873,6 @@ def run_pipeline(test_mode: bool = False):
     return offers
 
 
-# ──────────────────────────────────────────────
-# ENTRÉE PRINCIPALE
-# ──────────────────────────────────────────────
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--once", action="store_true")
@@ -557,7 +882,7 @@ if __name__ == "__main__":
     if args.once or args.test:
         run_pipeline(test_mode=args.test)
     else:
-        log.info("Agent planifié — site à 06:00, email à 07:00")
+        log.info("Agent planifié — lundi-jeudi à 06:00")
         run_pipeline()
         schedule.every().day.at("06:00").do(run_pipeline)
         while True:
