@@ -505,8 +505,6 @@ def scrape_all() -> list[dict]:
         ("AfricaWork",         scrape_africawork),
         ("Jobart Talent",      scrape_jobartalent),
         ("ReliefWeb API",      scrape_reliefweb),
-        ("UNjobs",             scrape_unjobs),
-        ("UNDP Jobs",          scrape_undp),
     ]
 
     for nom, fn in sources:
