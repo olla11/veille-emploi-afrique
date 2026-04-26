@@ -437,57 +437,6 @@ def scrape_reliefweb() -> list[dict]:
     return offers
 
 
-def scrape_unjobs() -> list[dict]:
-    """UNjobs.org — postes Nations Unies."""
-    offers = []
-    for url, pays in [
-        ("https://unjobs.org/duty_stations/benin", "Bénin"),
-        ("https://unjobs.org/duty_stations/togo", "Togo"),
-        ("https://unjobs.org/duty_stations/senegal", "Sénégal"),
-    ]:
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=15)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for item in soup.select(".job, .vacancy, li, .job-listing")[:15]:
-                titre_el = item.select_one("a, h3, h2")
-                if not titre_el: continue
-                titre = titre_el.get_text(strip=True)[:200]
-                lien  = titre_el.get("href","")
-                if lien and not lien.startswith("http"):
-                    lien = "https://unjobs.org" + lien
-                if titre and len(titre) > 5:
-                    offers.append({"titre":titre,"org":"Nations Unies","pays":pays,
-                                   "url":lien,"source":"UNjobs","raw_text":titre})
-            time.sleep(1)
-        except Exception as e:
-            log.warning(f"  UNjobs {pays}: {e}")
-    log.info(f"  UNjobs: {len(offers)} offres")
-    return offers
-
-
-def scrape_undp() -> list[dict]:
-    """UNDP Jobs — postes PNUD."""
-    offers = []
-    try:
-        resp = requests.get("https://jobs.undp.org/cj_view_jobs.cfm",
-                            headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for row in soup.select("table tr")[1:25]:
-            cells = row.find_all("td")
-            if len(cells) < 2: continue
-            titre   = cells[0].get_text(strip=True)[:200]
-            lien_el = cells[0].find("a")
-            lien    = "https://jobs.undp.org" + lien_el["href"] if lien_el else ""
-            pays    = cells[-1].get_text(strip=True) if cells else "Afrique"
-            if titre and len(titre) > 5:
-                offers.append({"titre":titre,"org":"UNDP","pays":pays,
-                               "url":lien,"source":"UNDP Jobs","raw_text":titre})
-        log.info(f"  UNDP Jobs: {len(offers)} offres")
-    except Exception as e:
-        log.warning(f"  UNDP: {e}")
-    return offers
-
-
 def scrape_all() -> list[dict]:
     """Lance toutes les sources."""
     log.info("=== Début de la collecte ===")
